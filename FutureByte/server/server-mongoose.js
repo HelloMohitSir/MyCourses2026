@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { connectDB, getDB } = require('./config/database');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,38 +14,35 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    try {
-        const db = getDB();
-        if (db) {
-            res.json({ status: 'OK', database: 'connected' });
-        } else {
-            res.status(500).json({ status: 'ERROR', database: 'not connected' });
-        }
-    } catch (error) {
-        res.status(500).json({ status: 'ERROR', message: error.message });
-    }
+// MongoDB Connection with Mongoose
+const uri = process.env.MONGODB_URI;
+
+// Define Item Schema
+const itemSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    description: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
 });
 
-// Root endpoint
+const Item = mongoose.model('Item', itemSchema);
+
+// Routes
 app.get('/', (req, res) => {
     res.json({
         message: 'FutureByte Server is Running!',
-        status: 'Connected to MongoDB',
+        status: 'Connected to MongoDB via Mongoose',
         timestamp: new Date().toISOString(),
         endpoints: {
-            items: 'http://localhost:5000/api/items',
-            health: 'http://localhost:5000/health'
+            items: 'http://localhost:5000/api/items'
         }
     });
 });
 
-// API Routes
+// Get all items
 app.get('/api/items', async (req, res) => {
     try {
-        const db = getDB();
-        const items = await db.collection('items').find().toArray();
+        const items = await Item.find();
         res.json(items);
     } catch (error) {
         console.error('Error in GET /api/items:', error);
@@ -53,6 +50,7 @@ app.get('/api/items', async (req, res) => {
     }
 });
 
+// Create item
 app.post('/api/items', async (req, res) => {
     try {
         const { name, description } = req.body;
@@ -64,20 +62,16 @@ app.post('/api/items', async (req, res) => {
             return res.status(400).json({ error: 'Description is required' });
         }
         
-        const db = getDB();
-        const newItem = {
-            name: name.trim(),
-            description: description.trim(),
-            createdAt: new Date(),
-            updatedAt: new Date()
-        };
-        
-        const result = await db.collection('items').insertOne(newItem);
+        const item = new Item({ 
+            name: name.trim(), 
+            description: description.trim() 
+        });
+        await item.save();
         
         res.status(201).json({
             message: 'Item created successfully',
-            id: result.insertedId,
-            item: newItem
+            id: item._id,
+            item: item
         });
     } catch (error) {
         console.error('Error in POST /api/items:', error);
@@ -85,11 +79,10 @@ app.post('/api/items', async (req, res) => {
     }
 });
 
+// Get single item
 app.get('/api/items/:id', async (req, res) => {
     try {
-        const { ObjectId } = require('mongodb');
-        const db = getDB();
-        const item = await db.collection('items').findOne({ _id: new ObjectId(req.params.id) });
+        const item = await Item.findById(req.params.id);
         if (!item) {
             return res.status(404).json({ message: 'Item not found' });
         }
@@ -100,38 +93,32 @@ app.get('/api/items/:id', async (req, res) => {
     }
 });
 
+// Update item
 app.put('/api/items/:id', async (req, res) => {
     try {
-        const { ObjectId } = require('mongodb');
         const { name, description } = req.body;
-        const db = getDB();
-        
-        const result = await db.collection('items').updateOne(
-            { _id: new ObjectId(req.params.id) },
-            { $set: { name, description, updatedAt: new Date() } }
+        const item = await Item.findByIdAndUpdate(
+            req.params.id,
+            { name, description, updatedAt: new Date() },
+            { new: true, runValidators: true }
         );
-        
-        if (result.matchedCount === 0) {
+        if (!item) {
             return res.status(404).json({ message: 'Item not found' });
         }
-        
-        res.json({ message: 'Item updated successfully' });
+        res.json({ message: 'Item updated successfully', item });
     } catch (error) {
         console.error('Error in PUT /api/items/:id:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
+// Delete item
 app.delete('/api/items/:id', async (req, res) => {
     try {
-        const { ObjectId } = require('mongodb');
-        const db = getDB();
-        const result = await db.collection('items').deleteOne({ _id: new ObjectId(req.params.id) });
-        
-        if (result.deletedCount === 0) {
+        const item = await Item.findByIdAndDelete(req.params.id);
+        if (!item) {
             return res.status(404).json({ message: 'Item not found' });
         }
-        
         res.json({ message: 'Item deleted successfully' });
     } catch (error) {
         console.error('Error in DELETE /api/items/:id:', error);
@@ -150,14 +137,28 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Internal server error' });
 });
 
-// Start server
+// Start server with Mongoose connection
 async function startServer() {
     try {
-        await connectDB();
+        // Mongoose connection options for Node.js 24
+        await mongoose.connect(uri, {
+            serverSelectionTimeoutMS: 30000,
+            socketTimeoutMS: 45000,
+            family: 4,
+            // These options help with SSL compatibility
+            tls: true,
+            tlsAllowInvalidCertificates: true,
+            tlsAllowInvalidHostnames: true,
+            retryWrites: true,
+            w: 'majority'
+        });
+        
+        console.log('✅ Connected to MongoDB via Mongoose');
+        console.log(`✅ Database: ${mongoose.connection.name}`);
+        
         app.listen(PORT, () => {
             console.log(`🚀 Server running on http://localhost:${PORT}`);
             console.log(`📡 API: http://localhost:${PORT}/api/items`);
-            console.log(`🔗 Health: http://localhost:${PORT}/health`);
         });
     } catch (error) {
         console.error('Failed to start server:', error.message);

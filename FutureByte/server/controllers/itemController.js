@@ -1,16 +1,22 @@
-// controllers/itemController.js
 const { ObjectId } = require('mongodb');
 const { getDB } = require('../config/database');
-const Item = require('../models/Item');
 
-const collection = () => getDB().collection('items');
+const getCollection = () => {
+    const db = getDB();
+    if (!db) {
+        throw new Error('Database not initialized');
+    }
+    return db.collection('items');
+};
 
 // Get all items
 const getAllItems = async (req, res) => {
     try {
-        const items = await collection().find().toArray();
+        const collection = getCollection();
+        const items = await collection.find().toArray();
         res.json(items);
     } catch (error) {
+        console.error('Error in getAllItems:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -19,12 +25,14 @@ const getAllItems = async (req, res) => {
 const getItemById = async (req, res) => {
     try {
         const { id } = req.params;
-        const item = await collection().findOne({ _id: new ObjectId(id) });
+        const collection = getCollection();
+        const item = await collection.findOne({ _id: new ObjectId(id) });
         if (!item) {
             return res.status(404).json({ message: 'Item not found' });
         }
         res.json(item);
     } catch (error) {
+        console.error('Error in getItemById:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -34,11 +42,22 @@ const createItem = async (req, res) => {
     try {
         const { name, description } = req.body;
         
-        // Validate
-        Item.validate({ name, description });
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ error: 'Name is required' });
+        }
+        if (!description || description.trim() === '') {
+            return res.status(400).json({ error: 'Description is required' });
+        }
         
-        const newItem = new Item({ name, description });
-        const result = await collection().insertOne(newItem);
+        const collection = getCollection();
+        const newItem = {
+            name: name.trim(),
+            description: description.trim(),
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        
+        const result = await collection.insertOne(newItem);
         
         res.status(201).json({
             message: 'Item created successfully',
@@ -46,7 +65,8 @@ const createItem = async (req, res) => {
             item: newItem
         });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        console.error('Error in createItem:', error);
+        res.status(500).json({ error: error.message });
     }
 };
 
@@ -56,12 +76,23 @@ const updateItem = async (req, res) => {
         const { id } = req.params;
         const { name, description } = req.body;
         
-        // Validate
-        Item.validate({ name, description });
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ error: 'Name is required' });
+        }
+        if (!description || description.trim() === '') {
+            return res.status(400).json({ error: 'Description is required' });
+        }
         
-        const result = await collection().updateOne(
+        const collection = getCollection();
+        const result = await collection.updateOne(
             { _id: new ObjectId(id) },
-            { $set: { name, description, updatedAt: new Date() } }
+            { 
+                $set: { 
+                    name: name.trim(), 
+                    description: description.trim(), 
+                    updatedAt: new Date() 
+                } 
+            }
         );
         
         if (result.matchedCount === 0) {
@@ -70,7 +101,8 @@ const updateItem = async (req, res) => {
         
         res.json({ message: 'Item updated successfully' });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        console.error('Error in updateItem:', error);
+        res.status(500).json({ error: error.message });
     }
 };
 
@@ -78,7 +110,8 @@ const updateItem = async (req, res) => {
 const deleteItem = async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await collection().deleteOne({ _id: new ObjectId(id) });
+        const collection = getCollection();
+        const result = await collection.deleteOne({ _id: new ObjectId(id) });
         
         if (result.deletedCount === 0) {
             return res.status(404).json({ message: 'Item not found' });
@@ -86,6 +119,7 @@ const deleteItem = async (req, res) => {
         
         res.json({ message: 'Item deleted successfully' });
     } catch (error) {
+        console.error('Error in deleteItem:', error);
         res.status(500).json({ error: error.message });
     }
 };
