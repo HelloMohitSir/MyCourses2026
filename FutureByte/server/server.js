@@ -6,182 +6,94 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = 5000;
 
-app.use(cors());
+// Middleware
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', '*'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
-// In-memory OTP store
-const otpStore = {};
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`📡 ${req.method} ${req.path}`);
+  next();
+});
 
-// Root route
+// Import routes
+const authRoutes = require('./routes/authRoutes');
+const itemRoutes = require('./routes/itemRoutes');
+const studentRoutes = require('./routes/studentRoutes');
+
+// Routes
 app.get('/', (req, res) => {
   res.json({
     message: 'FutureByte Server is Running!',
     status: 'Connected to MongoDB',
     timestamp: new Date().toISOString(),
     routes: {
-      sendOTP: 'POST /auth/send-otp',
-      verifyOTP: 'POST /auth/verify-otp',
-      items: 'GET /api/items',
-      debug: 'GET /auth/debug'
+      auth: '/auth',
+      items: '/api/items',
+      students: '/students'
     }
   });
 });
 
-// Debug route
-app.get('/auth/debug', (req, res) => {
-  res.json({
-    otpStore: otpStore,
-    routes: ['/', '/auth/debug', '/auth/send-otp', '/auth/verify-otp', '/api/items']
-  });
-});
+// Mount routes
+app.use('/auth', authRoutes);
+app.use('/api/items', itemRoutes);
+app.use('/students', studentRoutes);
 
-// Send OTP
-app.post('/auth/send-otp', (req, res) => {
-  console.log('📱 Send OTP endpoint hit!');
-  const { phoneNumber } = req.body;
-  console.log('📱 Phone:', phoneNumber);
-  
-  if (!phoneNumber) {
-    return res.status(400).json({ error: 'Phone number required' });
-  }
-
-  const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-  
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  otpStore[cleanNumber] = { 
-    otp, 
-    expires: Date.now() + 300000,
-    createdAt: new Date().toISOString()
-  };
-  
-  console.log(`✅ OTP generated for ${cleanNumber}: ${otp}`);
-  console.log(`📦 OTP Store:`, Object.keys(otpStore));
-  
-  // ALWAYS return OTP in development
-  res.json({
-    success: true,
-    message: 'OTP sent successfully',
-    otp: otp, // Always return OTP for development
-    expiresIn: '5 minutes'
-  });
-});
-
-// Verify OTP
-app.post('/auth/verify-otp', (req, res) => {
-  console.log('🔐 Verify OTP endpoint hit!');
-  const { phoneNumber, otp } = req.body;
-  console.log('🔐 Phone:', phoneNumber, 'OTP:', otp);
-  
-  if (!phoneNumber || !otp) {
-    return res.status(400).json({ error: 'Phone and OTP required' });
-  }
-
-  const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-  const stored = otpStore[cleanNumber];
-  
-  console.log('🔍 Stored OTP:', stored);
-  
-  if (!stored) {
-    return res.status(400).json({ error: 'No OTP found for this number' });
-  }
-
-  if (Date.now() > stored.expires) {
-    delete otpStore[cleanNumber];
-    return res.status(400).json({ error: 'OTP has expired' });
-  }
-
-  if (stored.otp !== otp) {
-    return res.status(400).json({ error: 'Invalid OTP' });
-  }
-
-  delete otpStore[cleanNumber];
-  
-  const token = Buffer.from(JSON.stringify({
-    id: cleanNumber,
-    name: `User_${cleanNumber.slice(-4)}`,
-    phoneNumber: cleanNumber,
-    isPhoneVerified: true,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000
-  })).toString('base64');
-
-  res.json({
-    success: true,
-    message: 'Phone verified successfully',
-    token: token,
-    user: {
-      id: cleanNumber,
-      name: `User_${cleanNumber.slice(-4)}`,
-      phoneNumber: cleanNumber,
-      isPhoneVerified: true
-    }
-  });
-});
-
-// Get current user
-app.get('/auth/me', (req, res) => {
+// MongoDB Connection - Async with error handling
+async function connectDB() {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
-
-    try {
-      const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-      res.json({ user: decoded });
-    } catch (e) {
-      res.status(401).json({ error: 'Invalid token format' });
-    }
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-});
-
-// Items routes
-app.get('/api/items', async (req, res) => {
-  try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.json([]);
-    }
-    const db = mongoose.connection.db;
-    const items = await db.collection('items').find().toArray();
-    res.json(items);
-  } catch (error) {
-    console.error('Error getting items:', error);
-    res.json([]);
-  }
-});
-
-app.post('/api/items', async (req, res) => {
-  try {
-    const { name, description } = req.body;
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(500).json({ error: 'Database not connected' });
-    }
-    const db = mongoose.connection.db;
-    const result = await db.collection('items').insertOne({
-      name,
-      description,
-      createdAt: new Date()
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      family: 4
     });
-    res.status(201).json({
-      message: 'Item created',
-      id: result.insertedId
-    });
+    console.log('✅ Connected to MongoDB');
+    
+    // Create items collection if it doesn't exist
+    const db = mongoose.connection.db;
+    const collections = await db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+    
+    if (!collectionNames.includes('items')) {
+      console.log('📝 Creating items collection...');
+      await db.createCollection('items');
+      console.log('✅ Items collection created');
+    }
+    
+    return true;
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ MongoDB connection error:', error.message);
+    return false;
   }
-});
+}
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  family: 4
-})
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch(err => console.log('⚠️ MongoDB not connected:', err.message));
+// Start server
+async function startServer() {
+  // Connect to database first
+  const dbConnected = await connectDB();
+  
+  if (!dbConnected) {
+    console.log('⚠️ Running without database connection');
+  }
+  
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📡 API: http://localhost:${PORT}/api/items`);
+    console.log(`🔐 Auth: http://localhost:${PORT}/auth`);
+    console.log(`👥 Students: http://localhost:${PORT}/students`);
+    console.log(`📊 DB Status: ${dbConnected ? 'Connected ✅' : 'Not Connected ⚠️'}`);
+  });
+}
 
-// 404 handler
+startServer();
+
+// 404 handler - MUST be last
 app.use((req, res) => {
   console.log(`❌ 404: ${req.method} ${req.path}`);
   res.status(404).json({ 
@@ -198,11 +110,4 @@ app.use((err, req, res, next) => {
     message: 'Internal server error',
     error: err.message 
   });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📱 Send OTP: POST http://localhost:${PORT}/auth/send-otp`);
-  console.log(`🔐 Verify OTP: POST http://localhost:${PORT}/auth/verify-otp`);
-  console.log(`🔍 Debug: GET http://localhost:${PORT}/auth/debug`);
 });
