@@ -10,20 +10,16 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Health check
+// Health check - simple
 app.get('/', (req, res) => {
   res.json({
     message: 'FutureByte API is running!',
     status: 'Connected to MongoDB',
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      items: '/api/items',
-      auth: '/auth'
-    }
+    timestamp: new Date().toISOString()
   });
 });
 
-// Items API - direct implementation
+// Items endpoint
 app.get('/api/items', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -33,7 +29,6 @@ app.get('/api/items', async (req, res) => {
     const items = await db.collection('items').find().toArray();
     res.json(items);
   } catch (error) {
-    console.error('Error getting items:', error);
     res.json([]);
   }
 });
@@ -61,12 +56,11 @@ app.post('/api/items', async (req, res) => {
       id: result.insertedId
     });
   } catch (error) {
-    console.error('Error creating item:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Simple auth endpoint
+// Auth endpoints
 app.post('/auth/send-otp', (req, res) => {
   const { phoneNumber } = req.body;
   if (!phoneNumber) {
@@ -95,16 +89,18 @@ app.post('/auth/verify-otp', (req, res) => {
 });
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.log('⚠️ MongoDB not connected:', err.message));
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/test', {
+  serverSelectionTimeoutMS: 5000
+})
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch(err => console.log('⚠️ MongoDB not connected:', err.message));
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found', path: req.path });
+  res.status(404).json({ message: 'Route not found' });
 });
 
-// Start server
+// Start
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
