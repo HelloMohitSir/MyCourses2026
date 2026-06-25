@@ -1,8 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './LandingPage.css';
 
 function LandingPage() {
+  const { user, isAuthenticated } = useAuth();
+
   return (
     <div className="landing-page">
       {/* Hero Section */}
@@ -17,13 +20,26 @@ function LandingPage() {
             Explore courses, track your progress, and build amazing projects.
           </p>
           <div className="hero-buttons">
-            <Link to="/dashboard" className="btn-primary">
-              Get Started
-            </Link>
-            <Link to="/about" className="btn-secondary">
-              Learn More
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/dashboard" className="btn-primary">
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link to="/login" className="btn-primary">
+                  Get Started
+                </Link>
+                <Link to="/about" className="btn-secondary">
+                  Learn More
+                </Link>
+              </>
+            )}
           </div>
+          {isAuthenticated && user && (
+            <div className="welcome-message">
+              Welcome back, {user.name}! 👋
+            </div>
+          )}
         </div>
         <div className="hero-stats">
           <div className="stat">
@@ -68,36 +84,6 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* Course Preview Section */}
-      <section className="preview">
-        <h2>Popular Courses</h2>
-        <div className="course-preview-grid">
-          <div className="course-card">
-            <span className="course-emoji">⚛️</span>
-            <h3>React Mastery</h3>
-            <p>Build modern web applications with React</p>
-            <span className="course-tag">Popular</span>
-          </div>
-          <div className="course-card">
-            <span className="course-emoji">🐍</span>
-            <h3>Python Data Science</h3>
-            <p>Analyze and visualize data with Python</p>
-            <span className="course-tag">Trending</span>
-          </div>
-          <div className="course-card">
-            <span className="course-emoji">📱</span>
-            <h3>React Native</h3>
-            <p>Build cross-platform mobile apps</p>
-            <span className="course-tag">New</span>
-          </div>
-        </div>
-        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-          <Link to="/dashboard" className="btn-primary">
-            View All Courses
-          </Link>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="footer">
         <div className="footer-content">
@@ -109,6 +95,7 @@ function LandingPage() {
             <h4>Quick Links</h4>
             <Link to="/dashboard">Dashboard</Link>
             <Link to="/about">About</Link>
+            <Link to="/login">Sign In</Link>
           </div>
           <div className="footer-section">
             <h4>Connect</h4>
