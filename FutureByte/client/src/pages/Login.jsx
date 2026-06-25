@@ -6,10 +6,11 @@ import './Login.css';
 function Login() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
-  const [step, setStep] = useState('phone'); // 'phone' | 'otp'
+  const [step, setStep] = useState('phone');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [receivedOtp, setReceivedOtp] = useState('');
   
   const { loginWithGoogle, sendOTP, verifyOTP } = useAuth();
   const navigate = useNavigate();
@@ -21,8 +22,17 @@ function Login() {
     
     try {
       const result = await sendOTP(phoneNumber);
-      setSuccess('OTP sent successfully! Check your phone.');
-      setStep('otp');
+      setSuccess('OTP sent successfully!');
+      
+      // In development, show the OTP in the UI
+      if (result.otp) {
+        setReceivedOtp(result.otp);
+        setStep('otp');
+      } else {
+        // If no OTP in response, check console
+        setReceivedOtp('Check console for OTP');
+        setStep('otp');
+      }
     } catch (error) {
       setError(error.error || 'Failed to send OTP. Please try again.');
     } finally {
@@ -54,7 +64,6 @@ function Login() {
         </div>
 
         <div className="login-methods">
-          {/* Google Login */}
           <button 
             className="google-btn"
             onClick={loginWithGoogle}
@@ -67,7 +76,6 @@ function Login() {
             <span>or</span>
           </div>
 
-          {/* Phone Login */}
           {step === 'phone' ? (
             <form onSubmit={handleSendOTP}>
               <div className="form-group">
@@ -104,8 +112,16 @@ function Login() {
                   onChange={(e) => setOtp(e.target.value)}
                   maxLength="6"
                   required
+                  autoFocus
                 />
-                <small>Check your phone for the verification code</small>
+                <small>
+                  {receivedOtp && (
+                    <span style={{ color: '#667eea', fontWeight: 'bold' }}>
+                      📱 Your OTP: {receivedOtp}
+                    </span>
+                  )}
+                  {!receivedOtp && 'Check your phone for the verification code'}
+                </small>
               </div>
               
               {error && <div className="error-message">{error}</div>}

@@ -4,7 +4,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;  // Changed from 5000 to 5000
 
 app.use(cors());
 app.use(express.json());
@@ -55,14 +55,11 @@ app.post('/auth/send-otp', (req, res) => {
   };
   
   console.log(`✅ OTP generated for ${cleanNumber}: ${otp}`);
-  console.log(`📦 OTP Store:`, Object.keys(otpStore));
   
-  // ALWAYS return OTP in development
   res.json({
     success: true,
     message: 'OTP sent successfully',
-    otp: otp, // Always return OTP for development
-    expiresIn: '5 minutes'
+    otp: otp
   });
 });
 
@@ -70,7 +67,6 @@ app.post('/auth/send-otp', (req, res) => {
 app.post('/auth/verify-otp', (req, res) => {
   console.log('🔐 Verify OTP endpoint hit!');
   const { phoneNumber, otp } = req.body;
-  console.log('🔐 Phone:', phoneNumber, 'OTP:', otp);
   
   if (!phoneNumber || !otp) {
     return res.status(400).json({ error: 'Phone and OTP required' });
@@ -78,8 +74,6 @@ app.post('/auth/verify-otp', (req, res) => {
 
   const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
   const stored = otpStore[cleanNumber];
-  
-  console.log('🔍 Stored OTP:', stored);
   
   if (!stored) {
     return res.status(400).json({ error: 'No OTP found for this number' });
@@ -172,7 +166,7 @@ app.post('/api/items', async (req, res) => {
   }
 });
 
-// Connect to MongoDB
+// Connect to MongoDB (optional - will work without it)
 mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 30000,
   socketTimeoutMS: 45000,
@@ -181,13 +175,14 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('✅ Connected to MongoDB'))
 .catch(err => console.log('⚠️ MongoDB not connected:', err.message));
 
-// 404 handler
+// 404 handler - MUST be last
 app.use((req, res) => {
   console.log(`❌ 404: ${req.method} ${req.path}`);
   res.status(404).json({ 
     message: 'Route not found',
     path: req.path,
-    method: req.method
+    method: req.method,
+    availableRoutes: ['/', '/auth/debug', '/auth/send-otp', '/auth/verify-otp', '/api/items']
   });
 });
 
